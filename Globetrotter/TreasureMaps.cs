@@ -1,5 +1,5 @@
 ﻿using Dalamud.Hooking;
-using Lumina.Excel.GeneratedSheets;
+using Lumina.Excel.Sheets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,24 +21,17 @@ namespace Globetrotter {
                 var mapToRow = new Dictionary<uint, uint>();
 
                 foreach (var rank in this.Plugin.DataManager.GetExcelSheet<TreasureHuntRank>()!) {
-                    var unopened = rank.ItemName.Value;
+                    var unopened = rank.ItemName.ValueNullable;
                     if (unopened == null) {
                         continue;
                     }
 
-                    EventItem? opened;
-                    // FIXME: remove this try/catch when lumina is fixed
-                    try {
-                        opened = rank.KeyItemName.Value;
-                    } catch (NullReferenceException) {
-                        opened = null;
-                    }
-
+                    var opened = rank.KeyItemName.ValueNullable;
                     if (opened == null) {
                         continue;
                     }
 
-                    mapToRow[opened.RowId] = rank.RowId;
+                    mapToRow[opened.Value.RowId] = rank.RowId;
                 }
 
                 _mapToRow = mapToRow;
@@ -142,23 +135,26 @@ namespace Globetrotter {
                 return;
             }
 
-            var spot = this.Plugin.DataManager.GetExcelSheet<TreasureSpot>()!.GetRow(rowId, packet.SubRowId);
+            var spot = this.Plugin.DataManager
+                .GetSubrowExcelSheet<TreasureSpot>()
+                .Flatten()
+                .FirstOrDefault(s => s.RowId == rowId && s.SubrowId == packet.SubRowId);
 
-            var loc = spot?.Location?.Value;
-            var map = loc?.Map?.Value;
-            var terr = map?.TerritoryType?.Value;
+            var loc = spot.Location.ValueNullable;
+            var map = loc?.Map.ValueNullable;
+            var terr = map?.TerritoryType.ValueNullable;
 
-            if (terr == null) {
+            if (loc is null || map is null || terr is null) {
                 return;
             }
 
-            var x = ToMapCoordinate(loc!.X, map!.SizeFactor);
-            var y = ToMapCoordinate(loc.Z, map.SizeFactor);
+            var x = ToMapCoordinate(loc.Value.X, map.Value.SizeFactor);
+            var y = ToMapCoordinate(loc.Value.Z, map.Value.SizeFactor);
             var mapLink = new MapLinkPayload(
-                terr.RowId,
-                map.RowId,
-                ConvertMapCoordinateToRawPosition(x, map.SizeFactor),
-                ConvertMapCoordinateToRawPosition(y, map.SizeFactor)
+                terr.Value.RowId,
+                map.Value.RowId,
+                ConvertMapCoordinateToRawPosition(x, map.Value.SizeFactor),
+                ConvertMapCoordinateToRawPosition(y, map.Value.SizeFactor)
             );
 
             this.Plugin.GameGui.OpenMapWithMapLink(mapLink);
